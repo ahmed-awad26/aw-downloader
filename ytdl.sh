@@ -480,6 +480,11 @@ QUALITY_NAME="$QUALITY_NAME"
 AUDIO_ONLY="${AUDIO_ONLY:-false}"
 EXT="${EXT:-mp4}"
 CUSTOM_PL_URL="${CUSTOM_PL_URL:-}"
+FILE_INFO_NAME="${FILE_INFO_NAME:-}"
+FILE_INFO_SIZE="${FILE_INFO_SIZE:-}"
+FILE_INFO_TYPE="${FILE_INFO_TYPE:-}"
+FILE_INFO_FINAL_URL="${FILE_INFO_FINAL_URL:-}"
+FILE_INFO_EXTRACTOR="${FILE_INFO_EXTRACTOR:-}"
 EOF
 }
 
@@ -599,9 +604,48 @@ _is_ad_redirect() {
     'ads\.|adclick\.|doubleclick\.|googlesyndication\.|adnxs\.com|adform\.net|outbrain\.|taboola\.|propellerads\.|adf\.ly|linkvertise\.|ouo\.io|sh\.st|bc\.vc|sub2unlock\.|shorte\.st|shrinkme\.'
 }
 
+_extract_redirect_param() {
+  local url="$1" val
+  for key in url u target dest destination redirect redirect_url r; do
+    val=$(printf '%s' "$url" | sed -n "s/.*[?&]${key}=\([^&]*\).*/\1/p" | head -1)
+    if [[ -n "$val" ]]; then
+      val=$(python3 - <<'PY' "$val"
+import sys, urllib.parse
+print(urllib.parse.unquote(sys.argv[1]))
+PY
+)
+      [[ "$val" == http* ]] && { echo "$val"; return; }
+    fi
+  done
+  echo "$url"
+}
+
+_probe_file_helper() {
+  local url="$1" json
+  command -v python3 >/dev/null 2>&1 || return 1
+  json=$(python3 "$SCRIPT_DIR/ytdl_helper.py" probe-file "$url" 2>/dev/null) || return 1
+  [[ -z "$json" ]] && return 1
+  FILE_INFO_NAME=$(printf '%s' "$json" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("filename", ""))' 2>/dev/null)
+  FILE_INFO_SIZE=$(printf '%s' "$json" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("filesize_human") or "unknown size")' 2>/dev/null)
+  FILE_INFO_TYPE=$(printf '%s' "$json" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("content_type", ""))' 2>/dev/null)
+  FILE_INFO_FINAL_URL=$(printf '%s' "$json" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("final_url") or d.get("url") or "")' 2>/dev/null)
+  FILE_INFO_EXTRACTOR=$(printf '%s' "$json" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("extractor", ""))' 2>/dev/null)
+  [[ -n "$FILE_INFO_NAME" ]]
+}
+
+_prefetch_file_ui() {
+  local resolved
+  resolved=$(_extract_redirect_param "$INPUT_URL")
+  INPUT_URL="$resolved"
+  FILE_INFO_NAME=""; FILE_INFO_SIZE="unknown size"; FILE_INFO_TYPE=""; FILE_INFO_FINAL_URL="$INPUT_URL"; FILE_INFO_EXTRACTOR=""
+  _probe_file_helper "$INPUT_URL" || _fetch_file_info "$INPUT_URL"
+}
+
 # Fetch file metadata (name, size, content-type) via HEAD
 _fetch_file_info() {
   local url="$1"
+  url=$(_extract_redirect_param "$url")
+  FILE_INFO_FINAL_URL="$url"
   local headers
   headers=$(curl -sI --max-time 15 -L \
     -H "User-Agent: Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36" \
@@ -613,6 +657,7 @@ _fetch_file_info() {
   [[ -z "$FILE_INFO_NAME" ]] && \
     FILE_INFO_NAME=$(echo "$url" | sed 's/?.*//' | sed 's|.*/||' | head -c 60)
   [[ -z "$FILE_INFO_NAME" ]] && FILE_INFO_NAME="download_$(date +%s)"
+  FILE_INFO_NAME=$(printf '%s' "$FILE_INFO_NAME" | sed 's|[/\:*?"<>|]|_|g')
 
   local raw_size
   raw_size=$(echo "$headers" | grep -i '^content-length:' \
@@ -673,7 +718,10 @@ _download_file() {
 
   # Fetch name + size before downloading
   info "Fetching file info..."
-  _fetch_file_info "$dl_url"
+  if [[ -z "$FILE_INFO_NAME" ]]; then
+    _probe_file_helper "$dl_url" || _fetch_file_info "$dl_url"
+  fi
+  [[ -n "$FILE_INFO_FINAL_URL" ]] && dl_url="$FILE_INFO_FINAL_URL"
 
   printf "\n  ${C}┌──────────────────────────────────────────────────────┐${RST}\n"
   printf "  ${C}│${RST}  ${D}File   ${RST}  ${W}%-46s${RST} ${C}│${RST}\n" "${FILE_INFO_NAME:0:46}"
@@ -894,6 +942,7 @@ start_download() {
   local _ft="gdrive dropbox mega mediafire fourshared onedrive fileshare directfile"
   if echo "$_ft" | grep -qw "$URL_TYPE"; then
     QUALITY_NAME="Original file"; FORMAT=""; AUDIO_ONLY=false; EXT=""
+    _prefetch_file_ui
   else
     select_quality
   fi

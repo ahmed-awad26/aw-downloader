@@ -8,7 +8,9 @@ import sys
 import json
 import subprocess
 import os
+import re
 from pathlib import Path
+from urllib.parse import urlparse, parse_qs, unquote
 
 
 def run_yt_dlp(args: list, capture=True) -> tuple[int, str, str]:
@@ -141,10 +143,107 @@ def check_dependencies() -> dict:
     return results
 
 
+
+def _fmt_size(num):
+    try:
+        n = int(num or 0)
+    except Exception:
+        return None
+    units = ["B", "KB", "MB", "GB", "TB"]
+    size = float(n)
+    idx = 0
+    while size >= 1024 and idx < len(units) - 1:
+        size /= 1024.0
+        idx += 1
+    return f"{size:.1f} {units[idx]}" if idx else f"{int(size)} B"
+
+
+def _extract_redirect_target(url: str) -> str:
+    try:
+        q = parse_qs(urlparse(url).query)
+        for key in ("url", "u", "target", "dest", "destination", "redirect", "redirect_url", "r"):
+            if key in q and q[key]:
+                cand = unquote(q[key][0]).strip()
+                if cand.startswith(("http://", "https://")):
+                    return cand
+    except Exception:
+        pass
+    return url
+
+
+def probe_file_url(url: str) -> dict:
+    url = _extract_redirect_target(url.strip())
+    data = {
+        "ok": False,
+        "url": url,
+        "final_url": url,
+        "filename": "",
+        "filesize": None,
+        "filesize_human": None,
+        "content_type": "",
+        "extractor": "",
+    }
+
+    try:
+        code, out, err = run_yt_dlp([
+            "--dump-single-json",
+            "--skip-download",
+            "--no-warnings",
+            url,
+        ])
+        if code == 0 and out.strip():
+            meta = json.loads(out)
+            direct = meta.get("url") or meta.get("webpage_url") or url
+            fsize = meta.get("filesize") or meta.get("filesize_approx")
+            ext = meta.get("ext")
+            title = meta.get("title") or meta.get("filename") or ""
+            if title and ext and not str(title).lower().endswith(f".{ext}".lower()):
+                title = f"{title}.{ext}"
+            data.update({
+                "ok": True,
+                "final_url": direct,
+                "filename": title or data["filename"],
+                "filesize": fsize,
+                "filesize_human": _fmt_size(fsize) if fsize else None,
+                "content_type": meta.get("http_headers", {}).get("Content-Type", ""),
+                "extractor": meta.get("extractor_key") or meta.get("extractor") or "",
+            })
+    except Exception:
+        pass
+
+    try:
+        import requests
+        headers = {"User-Agent": "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36"}
+        r = requests.head(data.get("final_url") or url, allow_redirects=True, timeout=20, headers=headers)
+        disp = r.headers.get("content-disposition", "")
+        m = re.search(r'filename\*?=(?:UTF-8\'\')?"?([^";]+)', disp, re.I)
+        fname = unquote(m.group(1)).strip() if m else ""
+        clen = r.headers.get("content-length")
+        ctype = (r.headers.get("content-type") or "").split(";")[0].strip()
+        final = getattr(r, "url", data.get("final_url") or url)
+        data["final_url"] = final
+        if fname and not data.get("filename"):
+            data["filename"] = fname
+        if clen and str(clen).isdigit() and not data.get("filesize"):
+            data["filesize"] = int(clen)
+            data["filesize_human"] = _fmt_size(clen)
+        if ctype and not data.get("content_type"):
+            data["content_type"] = ctype
+        if not data.get("filename"):
+            tail = Path(urlparse(final).path).name
+            data["filename"] = tail or Path(urlparse(url).path).name or f"download_{os.getpid()}"
+        data["ok"] = True
+    except Exception:
+        if not data.get("filename"):
+            tail = Path(urlparse(url).path).name
+            data["filename"] = tail or f"download_{os.getpid()}"
+
+    return data
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: ytdl_helper.py <command> [args]")
-        print("Commands: check-deps, get-info <url>, get-playlists <url>")
+        print("Commands: check-deps, get-info <url>, get-playlists <url>, probe-file <url>")
         sys.exit(1)
 
     cmd = sys.argv[1]
@@ -163,6 +262,9 @@ def main():
     elif cmd == "get-playlists" and len(sys.argv) >= 3:
         pls = get_playlists(sys.argv[2])
         print(json.dumps(pls, ensure_ascii=False, indent=2))
+
+    elif cmd == "probe-file" and len(sys.argv) >= 3:
+        print(json.dumps(probe_file_url(sys.argv[2]), ensure_ascii=False))
 
     elif cmd == "setup-dirs" and len(sys.argv) >= 5:
         base_dir = sys.argv[2]

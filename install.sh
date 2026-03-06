@@ -216,7 +216,7 @@ printf "  ${G}╔═════════════════════
 printf "  ${G}║   ✔  Installation complete!                         ║${RST}\n"
 printf "  ${G}╠══════════════════════════════════════════════════════╣${RST}\n"
 printf "  ${G}║${RST}   ${D}Run from folder :${RST}  ${W}bash ytdl.sh${RST}                  ${G}║${RST}\n"
-printf "  ${G}║${RST}   ${D}Run from anywhere:${RST}  ${W}ytdl${RST}                         ${G}║${RST}\n"
+printf "  ${G}║${RST}   ${D}Run from anywhere:${RST}  ${W}awdl${RST}                         ${G}║${RST}\n"
 printf "  ${G}╚══════════════════════════════════════════════════════╝${RST}\n\n"
 printf "  ${C}Press ENTER to launch now...${RST} "
 read -r

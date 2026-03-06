@@ -9,19 +9,22 @@
 ╚═╝  ╚═╝ ╚══╝╚══╝
 ```
 
-![Version](https://img.shields.io/badge/version-3.0-blue?style=flat-square)
+![Version](https://img.shields.io/badge/version-3.1-blue?style=flat-square)
 ![Platform](https://img.shields.io/badge/platform-Termux%20%7C%20Android-green?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-orange?style=flat-square)
 ![yt-dlp](https://img.shields.io/badge/powered%20by-yt--dlp-red?style=flat-square)
 ![Author](https://img.shields.io/badge/by-Ahmed%20Awad-cyan?style=flat-square)
 
-**Download from YouTube, Facebook, Instagram, TikTok, and 1000+ sites — inside Termux on Android**
+**Download from YouTube, Facebook, Instagram, TikTok, file-hosting sites, and 1000+ services — inside Termux on Android**
 
 [Installation](#-quick-installation) · [Usage](#-usage) · [Modes](#-download-modes) · [Structure](#-folder-structure) · [Troubleshooting](#-troubleshooting) · [License](#-license)
 
 ---
 
 ### 🌐 اختر لغتك / Choose Your Language
+
+> The installer starts with a simple language choice, while the installed project interface remains fully English as requested.
+
 
 [![العربية](https://img.shields.io/badge/🇸🇦-العربية-green?style=for-the-badge)](#-النسخة-العربية)
 &nbsp;&nbsp;
@@ -291,7 +294,7 @@ echo 'DOWNLOAD_ROOT=/sdcard/MyVideos' >> .config
 
 <div align="center">
 
-**Download from YouTube, Facebook, Instagram, TikTok, and 1000+ sites — inside Termux on Android**
+**Download from YouTube, Facebook, Instagram, TikTok, file-hosting sites, and 1000+ services — inside Termux on Android**
 
 </div>
 
